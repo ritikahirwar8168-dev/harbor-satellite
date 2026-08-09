@@ -90,7 +90,7 @@ cd quickstart/gc
 
 ### 1.2 Generate Certificates
 
-Generate the SPIRE upstream authority CA, X.509 PoP CA (signs agent certificates), and per-agent leaf certificates:
+Generate the SPIRE upstream authority CA, X.509 PoP CA (signs agent certificates), and per-agent leaf certificates. Each layer has a distinct issuer in the certificate chain — see [Certificate Issuer](certificate-issuer.md) for details.
 
 ```bash
 mkdir -p certs

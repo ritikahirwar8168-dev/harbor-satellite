@@ -65,7 +65,7 @@ SPIRE uses this CA to sign its intermediate CA, which in turn issues all SVIDs. 
 
 ## Layer 2: X.509 PoP CA (x509pop attestation only)
 
-When using [X.509 PoP attestation](quickstart.md), agents prove their identity with pre-provisioned certificates instead of join tokens. A separate CA signs these attestation certificates:
+When using [X.509 PoP attestation](/docs/quickstart/), agents prove their identity with pre-provisioned certificates instead of join tokens. A separate CA signs these attestation certificates:
 
 ```text
 Subject: CN=X509 PoP CA, O=Harbor Satellite
@@ -91,9 +91,11 @@ Join-token and SSH PoP deployments do not use this layer.
 Each SPIRE agent gets a leaf certificate signed by the X.509 PoP CA:
 
 ```text
-Subject: CN=us-east-1, O=Harbor Satellite
+Subject: CN=agent-satellite, O=Harbor Satellite
 Issuer:  CN=X509 PoP CA, O=Harbor Satellite
 ```
+
+The CN is arbitrary but must match `satellite_name` during registration. The x509pop example uses `agent-satellite`; the quickstart uses `us-east-1`.
 
 Key requirements:
 
@@ -104,8 +106,10 @@ Key requirements:
 After attestation, SPIRE assigns the agent a SPIFFE ID based on the certificate fingerprint:
 
 ```text
-spiffe://harbor-satellite.local/spire/agent/x509pop/<sha256-fingerprint>
+spiffe://harbor-satellite.local/spire/agent/x509pop/<fingerprint>
 ```
+
+By default, SPIRE's x509pop plugin uses the certificate DER **SHA-1** fingerprint in the agent path. A different hash requires an explicit `agent_path_template` in the SPIRE server config.
 
 ## Layer 4: Workload SVIDs (mTLS Identity)
 
@@ -121,7 +125,7 @@ Example workload SPIFFE IDs:
 | Workload | SPIFFE ID |
 |----------|-----------|
 | Ground Control | `spiffe://harbor-satellite.local/ground-control` |
-| Satellite | `spiffe://harbor-satellite.local/satellite/<region>/<name>` |
+| Satellite | `spiffe://harbor-satellite.local/satellite/region/<region>/<name>` |
 
 SVIDs rotate automatically (default TTL: 1 hour). You do not manage these certificates manually.
 
@@ -130,24 +134,24 @@ SVIDs rotate automatically (default TTL: 1 hour). You do not manage these certif
 Use `openssl` to inspect any certificate in the chain:
 
 ```bash
-# Show issuer and subject
-openssl x509 -in certs/us-east-1.crt -noout -issuer -subject
+# Show issuer and subject (x509pop example: agent-satellite.crt)
+openssl x509 -in certs/agent-satellite.crt -noout -issuer -subject
 
 # Full certificate details
-openssl x509 -in certs/us-east-1.crt -noout -text | grep -A1 "Issuer\|Subject\|URI"
+openssl x509 -in certs/agent-satellite.crt -noout -text | grep -A1 "Issuer\|Subject\|URI"
 ```
 
 Example output for an agent attestation certificate:
 
 ```text
 issuer=CN=X509 PoP CA, O=Harbor Satellite, L=City, ST=State, C=US
-subject=CN=us-east-1, O=Harbor Satellite, L=City, ST=State, C=US
+subject=CN=agent-satellite, O=Harbor Satellite, L=City, ST=State, C=US
 ```
 
 Verify a leaf certificate chains to the PoP CA:
 
 ```bash
-openssl verify -CAfile certs/x509pop-ca.crt certs/us-east-1.crt
+openssl verify -CAfile certs/x509pop-ca.crt certs/agent-satellite.crt
 ```
 
 List attested agents and their SPIFFE IDs:
@@ -163,7 +167,9 @@ docker exec spire-server /opt/spire/bin/spire-server agent list \
 |--------|-------------------|-------------|-------------------------------|
 | Join token | SPIRE server (one-time token) | SPIRE server CA | Join token (single-use) |
 | X.509 PoP | X.509 PoP CA | SPIRE server CA | Agent cert + key |
-| SSH PoP | SSH CA | SPIRE server CA | SSH host cert |
+| SSH PoP | SSH CA | SPIRE server CA | SSH host key + host certificate |
+
+For SSH PoP, the host private key is generated on the edge device; only the host certificate (signed by the SSH CA) is pre-provisioned.
 
 In all cases, ongoing mTLS between Ground Control and Satellite uses SVIDs issued by the SPIRE server CA.
 
@@ -183,16 +189,18 @@ In all cases, ongoing mTLS between Ground Control and Satellite uses SVIDs issue
 
 ### SPIRE server CA rotation
 
+This is a high-level overview. Production rotations require overlapping trust bundles, SPIRE authority prepare/activate steps, and agent rollout before retiring the old CA. See the [SPIRE Upstream Authority documentation](https://spiffe.io/docs/latest/deploying/upstream_authorities/) for the full procedure.
+
 1. Generate a new upstream authority CA (or get a new cert from your org PKI).
-2. Update `UpstreamAuthority "disk"` paths in SPIRE server config.
-3. Distribute the new trust bundle to all SPIRE agents.
-4. Restart SPIRE server, then agents.
+2. Distribute the new trust bundle to all SPIRE agents **before** switching the server authority.
+3. Update `UpstreamAuthority "disk"` paths in SPIRE server config and activate the new authority.
+4. Restart SPIRE server, then agents. Revoke or retire the old CA only after all agents trust the new bundle.
 
 Plan rotation before the CA expires. Expired upstream CAs prevent SVID issuance for the entire fleet.
 
 ## Related Documentation
 
-- [Quickstart](quickstart.md) — End-to-end x509pop deployment with certificate generation
-- [Architecture](architecture.md) — Full SPIFFE registration and mTLS flow
+- [Quickstart](/docs/quickstart/) — End-to-end x509pop deployment with certificate generation
+- [Architecture](/docs/architecture/) — Full SPIFFE registration and mTLS flow
 - [X.509 PoP example](https://github.com/container-registry/harbor-satellite/tree/main/examples/deploy/spiffe/x509pop) — `generate-certs.sh` and Docker Compose setup
 - [ADR 0005: SPIFFE Identity and Security](https://github.com/container-registry/harbor-satellite/blob/main/docs/decisions/0005-spiffe-identity-and-security.md) — Design decisions

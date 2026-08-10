@@ -14,11 +14,11 @@ Harbor Satellite uses up to four certificate layers when SPIFFE is enabled:
 ## Quick Inspection
 
 ```bash
-# Issuer and subject of an agent cert
-openssl x509 -in certs/us-east-1.crt -noout -issuer -subject
+# Issuer and subject of an agent cert (x509pop example output)
+openssl x509 -in certs/agent-satellite.crt -noout -issuer -subject
 
 # Verify chain to PoP CA
-openssl verify -CAfile certs/x509pop-ca.crt certs/us-east-1.crt
+openssl verify -CAfile certs/x509pop-ca.crt certs/agent-satellite.crt
 
 # List attested agents
 docker exec spire-server /opt/spire/bin/spire-server agent list \

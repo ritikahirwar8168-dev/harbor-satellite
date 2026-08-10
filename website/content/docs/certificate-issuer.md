@@ -95,7 +95,7 @@ Subject: CN=agent-satellite, O=Harbor Satellite
 Issuer:  CN=X509 PoP CA, O=Harbor Satellite
 ```
 
-The CN is arbitrary but must match `satellite_name` during registration. The x509pop example uses `agent-satellite`; the quickstart uses `us-east-1`.
+The CN must match `satellite_name` in the Ground Control registration API. Ground Control matches x509pop agents with selector `x509pop:subject:cn:<satellite_name>`. In the x509pop example, `generate-certs.sh` sets `CN=agent-satellite` and `setup.sh` registers `satellite_name: agent-satellite`.
 
 Key requirements:
 
@@ -169,7 +169,7 @@ docker exec spire-server /opt/spire/bin/spire-server agent list \
 | X.509 PoP | X.509 PoP CA | SPIRE server CA | Agent cert + key |
 | SSH PoP | SSH CA | SPIRE server CA | SSH host key + host certificate |
 
-For SSH PoP, the host private key is generated on the edge device; only the host certificate (signed by the SSH CA) is pre-provisioned.
+For SSH PoP, the host private key and host certificate (signed by the SSH CA) are generated on the cloud/Ground Control side by `generate-certs.sh` and pre-provisioned to the edge device together.
 
 In all cases, ongoing mTLS between Ground Control and Satellite uses SVIDs issued by the SPIRE server CA.
 
@@ -189,12 +189,15 @@ In all cases, ongoing mTLS between Ground Control and Satellite uses SVIDs issue
 
 ### SPIRE server CA rotation
 
-This is a high-level overview. Production rotations require overlapping trust bundles, SPIRE authority prepare/activate steps, and agent rollout before retiring the old CA. See the [SPIRE Upstream Authority documentation](https://spiffe.io/docs/latest/deploying/upstream_authorities/) for the full procedure.
+Rotating the upstream authority is a staged process. The steps below apply to Harbor Satellite's `UpstreamAuthority "disk"` deployments (SPIRE 1.14.x). For SPIRE-managed local signing keys, use `spire-server localauthority x509 prepare` and `spire-server localauthority x509 activate`. See the [SPIRE Upstream Authority documentation](https://spiffe.io/docs/latest/deploying/upstream_authorities/) for your deployment model.
 
-1. Generate a new upstream authority CA (or get a new cert from your org PKI).
-2. Distribute the new trust bundle to all SPIRE agents **before** switching the server authority.
-3. Update `UpstreamAuthority "disk"` paths in SPIRE server config and activate the new authority.
-4. Restart SPIRE server, then agents. Revoke or retire the old CA only after all agents trust the new bundle.
+1. **Prepare** a new upstream authority key pair (`ca.crt` / `ca.key`, or an org-signed equivalent).
+2. **Overlap trust bundles:** Add the new root CA to every SPIRE agent trust bundle while keeping the old root. Restart agents and confirm they remain healthy.
+3. **Switch server authority:** For the disk plugin, replace the `UpstreamAuthority "disk"` cert and key files on disk (the plugin reloads them on the next CSR; no server restart required). For other plugins, update server config and restart as documented.
+4. **Verify issuance:** Confirm new SVIDs chain to the new authority (`spire-server bundle show`, check agent SVID renewal in logs).
+5. **Taint and revoke old authority:** After agents accept the new bundle and new signatures are issued, taint then revoke the old upstream CA (`spire-server upstreamauthority taint`, `spire-server upstreamauthority revoke`). For SPIRE-managed local keys, use `spire-server localauthority x509 taint` / `revoke` on the old key.
+6. **Retire old CA from bundles:** Remove the old root from agent trust bundles only after all agents have renewed SVIDs under the new authority.
+7. **Rollback:** If the new authority cannot sign intermediates or agents fail to attest, revert the upstream cert/key files (or server config), restore the original agent trust bundles, and restart the server then agents.
 
 Plan rotation before the CA expires. Expired upstream CAs prevent SVID issuance for the entire fleet.
 

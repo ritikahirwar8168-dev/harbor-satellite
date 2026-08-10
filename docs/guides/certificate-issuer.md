@@ -8,7 +8,7 @@ Harbor Satellite uses up to four certificate layers when SPIFFE is enabled:
 
 1. **SPIRE upstream authority CA** (`CN=SPIRE CA`) — Trust root. Signs SPIRE's intermediate CA, which issues all SVIDs. Configured via `UpstreamAuthority "disk"` in SPIRE server config.
 2. **X.509 PoP CA** (`CN=X509 PoP CA`) — Signs agent attestation certificates. Only used with x509pop attestation. Trusted by SPIRE via `ca_bundle_path`.
-3. **Agent attestation certificates** — Leaf certs signed by the PoP CA. CN must match `satellite_name`. Used once at node attestation.
+3. **Agent attestation certificates** — Leaf certs signed by the PoP CA. CN must match `satellite_name` (the x509pop example uses `agent-satellite` in both `generate-certs.sh` and `setup.sh`). Used once at node attestation.
 4. **Workload SVIDs** — Short-lived certs issued by SPIRE server CA. Used for mTLS between Ground Control and Satellite. Auto-rotated.
 
 ## Quick Inspection
